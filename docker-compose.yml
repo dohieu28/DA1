@@ -1,0 +1,82 @@
+version: '3.8'
+services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: csi_redpanda_broker
+    command: >
+      redpanda start 
+      --smp 1 
+      --memory 512M 
+      --overprovisioned 
+      --node-id 0 
+      --check=false 
+      --kafka-addr 0.0.0.0:9092 
+      --advertise-kafka-addr redpanda:9092
+      --rpc-addr 0.0.0.0:33145
+      --advertise-rpc-addr redpanda:33145
+      --pandaproxy-addr 0.0.0.0:8081
+      --advertise-pandaproxy-addr redpanda:8081
+    ports:
+      - "9092:9092"  # Kafka API
+      - "9644:9644"  # Admin API
+      - "8081:8081"  # HTTP Proxy (PandProxy) để ESP32 gửi dữ liệu
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - positioning_network
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: csi_redpanda_console
+    environment:
+      KAFKA_BROKERS: "redpanda:9092"
+    ports:
+      - "8080:8080"  # Web UI để kiểm tra Kafka
+    depends_on:
+      - redpanda
+    networks:
+      - positioning_network
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - positioning_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    depends_on:
+      - redpanda
+      - redis
+    networks:
+      - positioning_network
+
+ frontend:
+   build:
+     context: ./frontend
+     dockerfile: Dockerfile
+   container_name: frontend
+   ports:
+     - "3000:3000"
+   depends_on:
+     - backend
+   restart: always
+
+volumes:
+  redpanda_data:
+  redis_data:
+
+networks:
+  positioning_network:
+    driver: bridge
